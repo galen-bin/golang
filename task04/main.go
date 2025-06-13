@@ -14,9 +14,9 @@ import (
 
 type users struct {
 	Id       int32  `gorm:"not null;PRIMARY_KEY;AUTO_INCREMENT;UNIQUE_INDEX"`
-	Username string `gorm:"type:varchar(100);not null"`
+	Username string `gorm:"type:varchar(100);not null;UNIQUE"`
 	Password string `gorm:"type:varchar(100);not null"`
-	Email    string `gorm:"type:varchar(100);not null"`
+	Email    string `gorm:"type:varchar(100);"`
 }
 
 type posts struct {
@@ -30,6 +30,13 @@ type comments struct {
 	Content string
 	UserId  int32 `gorm:"not null"`
 	PostId  int32 `gorm:"not null"`
+}
+
+// 定义接收数据的结构体
+type Logins struct {
+	// binding:"required"修饰的字段，若接收为空值，则报错，是必须字段
+	User    string `form:"user" json:"user" uri:"user" xml:"user" binding:"required"`
+	Pssword string `form:"password" json:"password" uri:"password" xml:"password" binding:"required"`
 }
 
 var database *gorm.DB
@@ -54,7 +61,8 @@ func main() {
 	api := r.Group("/api")
 	{
 		api.GET("/users", getUsers) // 实际路径：/api/users
-		api.POST("/login", login)   // 实际路径：/api/login
+		api.POST("/login", Login)   // 实际路径：/api/Login
+		api.POST("/reg", Register)
 	}
 
 	// 3.监听端口，默认在8080
@@ -67,28 +75,22 @@ func getUsers(c *gin.Context) {
 	c.String(http.StatusOK, "getUsers %s", name)
 }
 
-func login(c *gin.Context) {
-	username := c.PostForm("username")
-	password := c.PostForm("userpassword")
-
-	c.JSON(http.StatusOK, gin.H{"status": "200", "name": username, "psd": password})
-}
-
 func Register(c *gin.Context) {
-	var user users
+	var user Logins
 	if err := c.ShouldBindJSON(&user); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	// 加密密码
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Pssword), bcrypt.DefaultCost)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
 		return
 	}
-	user.Password = string(hashedPassword)
-
-	if err := database.Create(&user).Error; err != nil {
+	var reg users
+	reg.Password = string(hashedPassword)
+	reg.Username = user.User
+	if err := database.Create(&reg).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 		return
 	}
@@ -97,20 +99,20 @@ func Register(c *gin.Context) {
 }
 
 func Login(c *gin.Context) {
-	var user users
+	var user Logins
 	if err := c.ShouldBindJSON(&user); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	var storedUser users
-	if err := database.Where("username = ?", user.Username).First(&storedUser).Error; err != nil {
+	if err := database.Where("username = ?", user.User).First(&storedUser).Error; err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
 		return
 	}
 
 	// 验证密码
-	if err := bcrypt.CompareHashAndPassword([]byte(storedUser.Password), []byte(user.Password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(storedUser.Password), []byte(user.Pssword)); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
 		return
 	}
@@ -122,10 +124,12 @@ func Login(c *gin.Context) {
 		"exp":      time.Now().Add(time.Hour * 24).Unix(),
 	})
 
-	_, err := token.SignedString([]byte("your_secret_key"))
+	tokens, err := token.SignedString([]byte("your_secret_key"))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
 	}
-	// 剩下的逻辑...
+
+	c.JSON(http.StatusOK, gin.H{"code": "0", "token": tokens})
+
 }
