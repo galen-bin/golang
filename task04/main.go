@@ -1,8 +1,8 @@
 package main
 
 import (
+	"blog/comt"
 	postsmanage "blog/posts"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -61,8 +61,8 @@ func main() {
 	//database.AutoMigrate(&users{}, &posts{}, &comments{})
 	database = db
 	postsmanage.DB = db
-
-	//uslist := []posts{{Title: "书籍01", UserId: 1}, {Title: "书籍01", UserId: 2}, {Title: "书籍01", UserId: 3}}
+	comt.DB = db
+	//uslist := []posts{{Title: "书籍0	1", UserId: 1}, {Title: "书籍01", UserId: 2}, {Title: "书籍01", UserId: 3}}
 	//uslist := []comments{{Content: "评论01", PostId: 1, UserId: 1}, {Content: "评论02", PostId: 2, UserId: 2}, {Content: "评论03", PostId: 3, UserId: 3}}
 
 	// 1.创建路由
@@ -75,19 +75,24 @@ func main() {
 
 		api.GET("/users", getUsers) // 实际路径：/api/users
 		api.POST("/reg", Register)
+		api.GET("/getpost", postsmanage.Getpost)
+
 	}
 
 	prv := r.Group("/prv")
-	prv.Use(auth)
+	prv.Use(auth())
 	{
 		prv.POST("/login", Login)                          // 实际路径：/prv/Login
 		prv.POST("/tests", tests)                          // 实际路径：/prv/tests
 		prv.POST("/create_post", postsmanage.Create_posts) // 创建文章
+		prv.POST("/save_post", postsmanage.Save_post)      // 修改文章
+		prv.GET("/del_post", postsmanage.Del_post)         // 删除文章
+
+		prv.POST("/create_comt", comt.Create_comt) //创建评论
+		prv.GET("/read_comt", comt.Read_comt)      //获取评论
+
 	}
 
-	//r.Any("/auth", auth)
-
-	// 3.监听端口，默认在8080
 	// Run("里面不指定端口号默认为8080")
 	r.Run(":8000")
 }
@@ -166,35 +171,44 @@ func Login(c *gin.Context) {
 
 }
 
-func auth(c *gin.Context) {
+func auth() gin.HandlerFunc {
 	// JWT 身份验证中间件
-	fmt.Println("JWT 身份验证中间件")
-	// 从请求头中获取 JWT
-	tokenString := c.GetHeader("Authorization")
-	if tokenString == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": "-1", "msg": "Missing Authorization header01"})
-		c.Abort()
-		return
+	return func(c *gin.Context) {
+
+		// 从请求头中获取 JWT
+		tokenString := c.GetHeader("Authorization")
+		if tokenString == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"code": "-1", "msg": "Missing Authorization header01"})
+			c.Abort()
+			return
+		}
+
+		// 解析并验证 JWT
+		token, err := ParseJWT(tokenString)
+
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"code": "-1", "msg": err.Error(), "token": tokenString})
+			c.Abort()
+			return
+		}
+
+		// 从令牌中提取声明
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"code": "-1", "msg": err.Error(), "token": token.user})
+			c.Abort()
+			return
+		}
+		if token.ID == 0 {
+			c.JSON(http.StatusUnauthorized, gin.H{"code": "-1", "msg": "token fail ", "token": token.user})
+			c.Abort()
+			return
+		}
+
+		c.Set("userID", token.ID)
+		c.Set("userName", token.user)
+		c.Next()
 	}
 
-	// 解析并验证 JWT
-	token, err := ParseJWT(tokenString)
-
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": "-1", "msg": err.Error(), "token": tokenString})
-		c.Abort()
-		return
-	}
-
-	// 从令牌中提取声明
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"code": "-1", "msg": err.Error(), "token": token.user})
-		c.Abort()
-		return
-	}
-	c.Set("userID", token.ID)
-	c.Set("userName", token.user)
-	c.Next()
 }
 
 // 解析并验证给定的 JWT
