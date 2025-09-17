@@ -228,7 +228,7 @@ func tranc() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	//a1 d6ba9dd24309ef43a7bc4c4ae2299414feb125a6eab08b21370c6c45cfe39460
+	
 
 	privateKey, err := crypto.HexToECDSA("*")
 	if err != nil {
@@ -526,3 +526,4 @@ func waitForReceipt(client *ethclient.Client, txHash common.Hash) (*types.Receip
 		time.Sleep(1 * time.Second)
 	}
 }
+
