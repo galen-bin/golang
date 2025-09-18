@@ -527,3 +527,58 @@ func waitForReceipt(client *ethclient.Client, txHash common.Hash) (*types.Receip
 	}
 }
 
+func subscr() {
+	client, err := ethclient.Dial("wss://ethereum-sepolia-rpc.publicnode.com")
+	if err != nil {
+		log.Fatal(err)
+	}
+	// 准备交易数据
+	json_api, err := os.ReadFile("./api.json")
+	if err != nil {
+		fmt.Println("读取文件失败:", err)
+		return
+	}
+
+	contractAddress := common.HexToAddress("0x6Fa7438fd5Ca09e1556555e035E31fe06215A152")
+	query := ethereum.FilterQuery{
+		Addresses: []common.Address{contractAddress},
+	}
+	logs := make(chan types.Log)
+	sub, err := client.SubscribeFilterLogs(context.Background(), query, logs)
+	if err != nil {
+		log.Fatal(err)
+	}
+	contractAbi, err := abi.JSON(strings.NewReader(string(json_api)))
+	if err != nil {
+		log.Fatal(err)
+	}
+	for {
+		select {
+		case err := <-sub.Err():
+			log.Fatal(err)
+		case vLog := <-logs:
+			fmt.Println(vLog.BlockHash.Hex())
+			fmt.Println(vLog.BlockNumber)
+			fmt.Println(vLog.TxHash.Hex())
+			fmt.Println(vLog) // pointer to event log
+
+			isresut, err := contractAbi.Unpack("Transfer", vLog.Data)
+
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			fmt.Println(isresut)
+			var topics []string
+			for i := range vLog.Topics {
+				topics = append(topics, vLog.Topics[i].Hex())
+			}
+			fmt.Println("topics[0]=", topics[0])
+			if len(topics) > 1 {
+				fmt.Println("index topic:", topics[1:])
+			}
+		}
+	}
+}
+
+
